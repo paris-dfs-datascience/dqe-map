@@ -27,8 +27,8 @@ steps:
         gcloud run jobs deploy csv-battle-card-job \
           --image=gcr.io/$PROJECT_ID/csv-battle-card-generator:latest \
           --region=us-central1 \
-          --memory=2Gi \
-          --cpu=1 \
+          --memory=8Gi \
+          --cpu=4 \
           --task-timeout=3600s \
           --max-retries=0 \
           --set-env-vars=GCS_BUCKET=${_GCS_BUCKET},PROJECT_ID=$PROJECT_ID
