@@ -153,7 +153,7 @@ SCORING METHODOLOGY (0-100 points total):
      * 5 pts: Company exists but headcount unclear
      * 0 pts: Cannot validate or business appears closed
    
-   - Business Information Accuracy (0-30 points):
+   - Business Information Accuracy (0-20 points):
      * Operating Status (0-10 pts): Currently active at this location
      * Contact Info Validity (0-10 pts): Data sources align
    

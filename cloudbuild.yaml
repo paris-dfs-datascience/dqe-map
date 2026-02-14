@@ -1,4 +1,4 @@
-#cloudbuild.yaml
+# cloudbuild.yaml
 steps:
   # Build the container image
   - name: 'gcr.io/cloud-builders/docker'
@@ -31,7 +31,7 @@ steps:
           --cpu=4 \
           --task-timeout=3600s \
           --max-retries=0 \
-          --set-env-vars=GCS_BUCKET=${_GCS_BUCKET},PROJECT_ID=$PROJECT_ID
+          --set-env-vars=GCS_BUCKET=${_GCS_BUCKET},PROJECT_ID=$PROJECT_ID,GOOGLE_MAPS_API_KEY=${_GOOGLE_MAPS_API_KEY}
 
 images:
   - 'gcr.io/$PROJECT_ID/csv-battle-card-generator:$BUILD_ID'
@@ -39,6 +39,7 @@ images:
 
 substitutions:
   _GCS_BUCKET: 'dqe-fiber-data'
+  _GOOGLE_MAPS_API_KEY: 'AIzaSyDhZ8solCSLMRT3b6Lw-y5h6N2eJcHisLo'  # Replace with your actual API key
 
 options:
   logging: CLOUD_LOGGING_ONLY

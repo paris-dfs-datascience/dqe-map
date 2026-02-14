@@ -1,4 +1,4 @@
-#Dockerfile
+# Dockerfile
 FROM python:3.11-slim
 
 # Set working directory
@@ -15,10 +15,14 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY csv_battle_card_generator.py .
+# Copy all application code files
+COPY battlecard_generator.py .
+COPY battlecard_config.py .
+COPY battlecard_llm.py .
+COPY battlecard_processor.py .
+COPY battlecard_storage.py .
 
-#Copy the CSV file
+# Copy the CSV file
 COPY tenants_enriched.csv .
 
 # Set environment variables
@@ -27,4 +31,4 @@ ENV GCS_BUCKET=dqe-fiber-data
 ENV PROJECT_ID=lma-website-461920
 
 # Default command
-CMD ["python", "csv_battle_card_generator.py"]
+CMD ["python", "battlecard_generator.py"]
