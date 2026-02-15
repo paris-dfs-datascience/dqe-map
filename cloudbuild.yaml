@@ -1,0 +1,53 @@
+# cloudbuild.yaml
+steps:
+  # Build the container image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/lma-website-461920/csv-battle-card-generator:$BUILD_ID'
+      - '-t'
+      - 'gcr.io/lma-website-461920/csv-battle-card-generator:latest'
+      - '.'
+
+  # Push with build ID tag
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/lma-website-461920/csv-battle-card-generator:$BUILD_ID']
+
+  # Push with latest tag
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/lma-website-461920/csv-battle-card-generator:latest']
+
+  # Deploy to Cloud Run as a JOB
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        gcloud run jobs deploy csv-battle-card-job \
+          --image=gcr.io/lma-website-461920/csv-battle-card-generator:latest \
+          --region=us-central1 \
+          --memory=8Gi \
+          --cpu=4 \
+          --task-timeout=3600s \
+          --max-retries=0 \
+          --set-env-vars=GCS_BUCKET=${_GCS_BUCKET},PROJECT_ID=lma-website-461920 \
+          --set-secrets=GOOGLE_MAPS_API_KEY=google-maps-api-key:latest
+
+availableSecrets:
+  secretManager:
+    - versionName: projects/lma-website-461920/secrets/google-maps-api-key/versions/latest
+      env: 'GOOGLE_MAPS_API_KEY'
+
+images:
+  - 'gcr.io/lma-website-461920/csv-battle-card-generator:$BUILD_ID'
+  - 'gcr.io/lma-website-461920/csv-battle-card-generator:latest'
+
+substitutions:
+  _GCS_BUCKET: 'dqe-fiber-data'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'
+
+timeout: '1200s'
