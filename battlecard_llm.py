@@ -155,7 +155,6 @@ class BattleCardLLM:
                 "network_economics_points": 0,
                 "business_scale_need_points": 0,
                 "network_analysis": {
-                    "dqe_distance_feet": "ERROR",
                     "network_category": "unknown",
                     "build_cost_assessment": "unknown",
                     "network_advantage": "Unable to assess"

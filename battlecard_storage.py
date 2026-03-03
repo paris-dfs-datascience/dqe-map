@@ -52,7 +52,6 @@ class BattleCardStorage:
                     "icp_score": bc['llm_analysis']['icp_fit']['icp_fit_score'],
                     "validated_employees": bc['llm_analysis']['data_confidence']['validated_employee_count'],
                     "priority": bc['llm_analysis']['sales_intelligence']['priority_level'],
-                    "dqe_distance": bc['connectbase_data'].get('DQE_Site_Distance', 'N/A')
                 }
                 for bc in battle_cards if bc['llm_analysis']['overall_score'] > 0
             ],

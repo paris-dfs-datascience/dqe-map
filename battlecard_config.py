@@ -45,7 +45,6 @@ def get_analysis_prompt(research_text: str, business_name: str, address: str, ci
     """Generate the analysis and scoring prompt."""
     
     ey_employees = ey_data.get('No Of Employees', 'N/A')
-    dqe_distance = connectbase_data.get('DQE_Site_Distance', 'N/A')
     dqe_connection = connectbase_data.get('DQE_Connection_Status', 'N/A')
     dqe_network_status = connectbase_data.get('DQE_Network_Status', 'N/A')
     
@@ -65,7 +64,6 @@ CONNECTBASE DATA:
 - CB Monthly Network Spend: {connectbase_data.get('API_MonthlyNetworkSpend', 'N/A')}
 
 DQE NETWORK INTELLIGENCE:
-- DQE Site Distance: {dqe_distance} feet (distance to nearest DQE fiber)
 - DQE Connection Status: {dqe_connection}
 - DQE Network Status: {dqe_network_status}
 - Competitors at Site: {connectbase_data.get('SITE_All_Competitors', 'N/A')}
@@ -137,7 +135,6 @@ If the data IS accurate, how valuable is this customer?
 
 A. Network Economics (0-20 points):
    {"Based on DQE Site Distance and connection status:" if has_connectbase else "Without network data, use conservative estimates:"}
-   
    {"- 20 pts: On-net (distance = 0 or Connection Status indicates 'on-net' or 'connected')" if has_connectbase else "- 10 pts: Network proximity unknown - assume moderate build cost"}
    {"- 10 pts: Near-net (distance > 0, any distance showing near-net status)" if has_connectbase else ""}
    {"- 0 pts: Not near DQE network or NOT_FOUND" if has_connectbase else ""}
@@ -209,7 +206,6 @@ OUTPUT FORMAT (strict JSON):
     "business_scale_need_points": <0-80>,
     
     "network_analysis": {{
-      "dqe_distance_feet": <number or "NOT_FOUND" or "NO_DATA">,
       "network_category": "<on_net|near_net|not_near_net|not_found|no_data>",
       "build_cost_assessment": "<zero|low|moderate|high|not_viable|unknown>",
       "network_advantage": "<why DQE is well-positioned or challenges>"

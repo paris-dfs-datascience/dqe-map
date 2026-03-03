@@ -1,1 +1,6 @@
 gcloud builds submit --config cloudbuild.yaml --project lma-website-461920
+
+
+git add .
+git commit -m "Adding Hubspt"
+git push orgin main
