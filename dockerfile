@@ -15,8 +15,7 @@ COPY battlecard_llm.py .
 COPY battlecard_processor.py .
 COPY battlecard_storage.py .
 COPY hubspot_matcher.py .
-
-COPY tenants_enriched.csv .
+COPY netsuite_matcher.py .
 
 ENV PYTHONUNBUFFERED=1
 ENV GCS_BUCKET=dqe-fiber-data

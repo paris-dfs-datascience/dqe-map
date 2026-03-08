@@ -102,7 +102,10 @@ Respond ONLY with valid JSON."""
                     response_mime_type="application/json"
                 )
             )
-            result = json.loads(resp.text)
+
+            # Gemini sometimes returns a list instead of a dict — normalize it
+            raw = json.loads(resp.text)
+            result = raw[0] if isinstance(raw, list) else raw
 
             if result.get("match"):
                 matched = next((c for c in candidates if c["id"] == result["id"]), None)

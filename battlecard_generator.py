@@ -1,4 +1,5 @@
 import csv
+import io
 import json
 import os
 import time
@@ -18,15 +19,30 @@ class CSVBattleCardGenerator:
         self.llm = BattleCardLLM(project_id)
         self.processor = BattleCardProcessor(self.llm, project_id)
         self.storage = BattleCardStorage(gcs_bucket)
+        self.gcs_client = storage.Client()
         print(f"Initialized CSVBattleCardGenerator")
 
-    def process_csv(self, csv_file: str, max_workers: int = 10) -> List[Dict]:
-        print(f"\n=== Processing CSV: {csv_file} ===")
+    def _read_csv_from_gcs(self, blob_path: str) -> List[Dict]:
+        """Read a CSV file directly from GCS and return rows as list of dicts."""
+        print(f"Reading CSV from gs://{self.gcs_bucket}/{blob_path}")
+        bucket = self.gcs_client.bucket(self.gcs_bucket)
+        blob = bucket.blob(blob_path)
+        content = blob.download_as_text(encoding='utf-8')
+        reader = csv.DictReader(io.StringIO(content))
+        rows = list(reader)
+        print(f"✓ Loaded {len(rows)} rows from GCS")
+        return rows
+
+    def process_csv(self, csv_blob_path: str, max_workers: int = 10, max_rows: int = None) -> List[Dict]:
+        print(f"\n=== Processing CSV: gs://{self.gcs_bucket}/{csv_blob_path} ===")
         print(f"Using {max_workers} parallel workers\n")
 
-        with open(csv_file, 'r', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            rows = list(reader)
+        rows = self._read_csv_from_gcs(csv_blob_path)
+
+        # Apply global row limit before sharding
+        if max_rows is not None:
+            rows = rows[:max_rows]
+            print(f"⚠ MAX_ROWS={max_rows}: limiting to first {len(rows)} rows globally")
 
         # --- Task slicing for Cloud Run parallel tasks ---
         task_index = int(os.environ.get('CLOUD_RUN_TASK_INDEX', 0))
@@ -86,20 +102,20 @@ def merge_shards(gcs_bucket: str, output_name: str, task_count: int):
         total_output += usage.get("output_tokens", 0)
         print(f"✓ Loaded shard {i}: {len(data.get('battle_cards', []))} records")
 
-    # Save merged output
     storage_handler = BattleCardStorage(gcs_bucket)
     storage_handler.save_to_gcs(all_cards, output_name, total_input, total_output)
     print(f"\n✓ Merged {len(all_cards)} total records → gs://{gcs_bucket}/csv-battle-cards/{output_name}.json")
 
 
 def main():
-    GCS_BUCKET = "dqe-fiber-data"
-    INPUT_CSV = "tenants_enriched.csv"
-    OUTPUT_NAME = "dqe_prospects"
-    MAX_WORKERS = 10
+    GCS_BUCKET   = "dqe-fiber-data"
+    INPUT_CSV    = "enriched-data/tenants_enriched.csv"
+    OUTPUT_NAME  = "dqe_prospects"
+    MAX_WORKERS  = 10
+    MAX_ROWS     = None  # Set to an int (e.g. 10) to limit rows during testing; None = process all
 
     generator = CSVBattleCardGenerator(gcs_bucket=GCS_BUCKET)
-    battle_cards = generator.process_csv(INPUT_CSV, max_workers=MAX_WORKERS)
+    battle_cards = generator.process_csv(INPUT_CSV, max_workers=MAX_WORKERS, max_rows=MAX_ROWS)
     generator.save_to_gcs(battle_cards, output_name=OUTPUT_NAME)
 
 
