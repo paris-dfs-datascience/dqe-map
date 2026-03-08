@@ -111,8 +111,8 @@ def main():
     GCS_BUCKET   = "dqe-fiber-data"
     INPUT_CSV    = "enriched-data/tenants_enriched.csv"
     OUTPUT_NAME  = "dqe_prospects"
-    MAX_WORKERS  = 3
-    MAX_ROWS     = None  # Set to an int (e.g. 10) to limit rows during testing; None = process all
+    MAX_WORKERS  = 2
+    MAX_ROWS     = 50  # Set to an int (e.g. 10) to limit rows during testing; None = process all
 
     generator = CSVBattleCardGenerator(gcs_bucket=GCS_BUCKET)
     battle_cards = generator.process_csv(INPUT_CSV, max_workers=MAX_WORKERS, max_rows=MAX_ROWS)

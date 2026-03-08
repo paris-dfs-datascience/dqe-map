@@ -1,6 +1,6 @@
 gcloud builds submit --config cloudbuild.yaml --project lma-website-461920
 
 git add .
-git commit -m "Added netsuite and other improvements."
+git commit -m "Reduced max workers to 2."
 git push origin main
 
