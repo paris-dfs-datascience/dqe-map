@@ -1,0 +1,55 @@
+# cloudbuild.yaml
+# Builds and deploys the DQE battle card pipeline to Cloud Run Jobs
+# Target project: manifest-altar-490719-j7 (DQE GCP)
+
+steps:
+  # ── Build container image ──────────────────────────────────────────────────
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/manifest-altar-490719-j7/dqe-battle-card-pipeline:$BUILD_ID'
+      - '-t'
+      - 'gcr.io/manifest-altar-490719-j7/dqe-battle-card-pipeline:latest'
+      - '.'
+
+  # ── Push build ID tag ──────────────────────────────────────────────────────
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/manifest-altar-490719-j7/dqe-battle-card-pipeline:$BUILD_ID'
+
+  # ── Push latest tag ────────────────────────────────────────────────────────
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/manifest-altar-490719-j7/dqe-battle-card-pipeline:latest'
+
+  # ── Deploy Cloud Run Job ───────────────────────────────────────────────────
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        gcloud run jobs deploy dqe-battle-card-job \
+          --image=gcr.io/manifest-altar-490719-j7/dqe-battle-card-pipeline:latest \
+          --project=manifest-altar-490719-j7 \
+          --region=us-central1 \
+          --memory=8Gi \
+          --cpu=4 \
+          --task-timeout=86400s \
+          --tasks=4 \
+          --parallelism=4 \
+          --max-retries=0 \
+          --set-env-vars=GCS_BUCKET=csv-battle-cards-dqe,PROJECT_ID=manifest-altar-490719-j7,MAX_WORKERS=3,MAX_ROWS=0 \
+          --set-secrets=GOOGLE_MAPS_API_KEY=google-maps-api-key:latest,CONNECTBASE_TENANT_API_KEY=connectbase-tenant-api-key:latest,CONNECTBASE_NETWORK_API_KEY=connectbase-network-api-key:latest,HUBSPOT_ACCESS_TOKEN=hubspot-access-token:latest
+
+images:
+  - 'gcr.io/manifest-altar-490719-j7/dqe-battle-card-pipeline:$BUILD_ID'
+  - 'gcr.io/manifest-altar-490719-j7/dqe-battle-card-pipeline:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'
+
+timeout: '1200s'

@@ -1,0 +1,8 @@
+[
+  {
+    "origin": ["https://manifest-altar-490719-j7.web.app", "https://manifest-altar-490719-j7.firebaseapp.com"],
+    "method": ["GET"],
+    "responseHeader": ["Content-Type"],
+    "maxAgeSeconds": 3600
+  }
+]
