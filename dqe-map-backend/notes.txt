@@ -1,6 +1,0 @@
-gcloud builds submit --config cloudbuild.yaml --project manifest-altar-490719-j7
-
-
-git add .
-git commit -m "push for DQE handoff"
-git push origin main

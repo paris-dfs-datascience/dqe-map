@@ -5,6 +5,7 @@ writes enriched CSV back to GCS. Step 1 of the pipeline.
 """
 
 import csv
+import collections
 import io
 import os
 import requests
@@ -22,7 +23,8 @@ from pipeline_config import (
     CONNECTBASE_TENANT_API_KEY, CONNECTBASE_NETWORK_API_KEY,
     CONNECTBASE_COMPANY_ID, ENRICHMENT_MAX_WORKERS,
     API_TIMEOUT, RETRY_ATTEMPTS, RATE_LIMIT_RETRIES, RATE_LIMIT_BACKOFF,
-    CB_TENANT_FIELD_MAP, CB_NETWORK_FIELD_MAP,
+    CB_TENANT_FIELD_MAP,
+    CONNECTBASE_CALLS_PER_MINUTE,
 )
 
 # ── Cloud Logging ─────────────────────────────────────────────────────────────
@@ -42,6 +44,34 @@ def tprint(*args, **kwargs):
     msg = " ".join(str(a) for a in args)
     with _print_lock:
         logger.info(msg)
+
+# ── Rate limiter (sliding window, per endpoint) ──────────────────────────────
+class _RateLimiter:
+    """Blocks until at most `max_calls` have started in the last `period` seconds."""
+    def __init__(self, max_calls: int, period: float = 60.0, name: str = ""):
+        self.max_calls = max_calls
+        self.period = period
+        self.name = name
+        self._calls = collections.deque()
+        self._lock = threading.Lock()
+
+    def acquire(self):
+        while True:
+            with self._lock:
+                now = time.monotonic()
+                while self._calls and self._calls[0] <= now - self.period:
+                    self._calls.popleft()
+                if len(self._calls) < self.max_calls:
+                    self._calls.append(now)
+                    return
+                sleep_for = self._calls[0] + self.period - now
+            time.sleep(max(sleep_for, 0.01))
+
+# Single shared limiter across all ConnectBase endpoints. ConnectBase's 180/min
+# ceiling is applied to the whole account, not per endpoint — observed by
+# simultaneous 429s on /tenants, /network-intelligence, and /onnet for the same
+# row. One shared budget + 170/min cap keeps us safely under.
+_connectbase_limiter = _RateLimiter(CONNECTBASE_CALLS_PER_MINUTE, 60.0, "connectbase")
 
 def normalize_name(name: str) -> str:
     if not name:
@@ -101,35 +131,12 @@ def _get_with_retry(url: str, params: dict, headers: dict, label: str):
             logger.error(f"{label}: unexpected error - {e}")
             return None
 
-def call_network_intelligence_api(address: str, city: str, state: str) -> Dict:
-    url         = "https://api.connected2fiber.com/network-intelligence/v6/"
-    address_str = f"{address} {city} {state}".strip()
-    params      = {"companyid": CONNECTBASE_COMPANY_ID, "address": address_str, "validation": "true"}
-    headers     = {"Cache-Control": "no-cache", "Ocp-Apim-Subscription-Key": CONNECTBASE_NETWORK_API_KEY}
-    response    = _get_with_retry(url, params, headers, label=f"Network [{address_str}]")
-    if response is None or response.status_code != 200:
-        return {}
-    data_list   = response.json().get("body", {}).get("data", [])
-    if not data_list:
-        return {}
-    all_providers = sorted(set(item.get("provider", "Unknown") for item in data_list))
-    dqe_options   = [item for item in data_list if "DQE" in item.get("provider", "").upper()]
-    if not dqe_options:
-        return {"all_site_providers": ", ".join(all_providers)}
-    onnet_options = [x for x in dqe_options if x.get("connectionStatus", "").strip().lower() == "onnet"]
-    if onnet_options:
-        best = onnet_options[0]
-    else:
-        non_zero = [x for x in dqe_options if x.get("siteDistance", 0) > 0]
-        best = min(non_zero, key=lambda x: x.get("siteDistance", 999999)) if non_zero else dqe_options[0]
-    best["all_site_providers"] = ", ".join(all_providers)
-    return best
-
 def call_onnet_providers_api(address: str, city: str, state: str) -> str:
     url         = "https://api.connectbase.com/network-intelligence/v6/onnet"
     address_str = f"{address} {city} {state}".strip()
     params      = {"companyId": CONNECTBASE_COMPANY_ID, "address": address_str, "validation": "true"}
     headers     = {"Cache-Control": "no-cache", "Ocp-Apim-Subscription-Key": CONNECTBASE_NETWORK_API_KEY}
+    _connectbase_limiter.acquire()
     response    = _get_with_retry(url, params, headers, label=f"Onnet [{address_str}]")
     if response is None or response.status_code != 200:
         return ""
@@ -140,6 +147,7 @@ def call_tenant_api(company_id: str, address: str, city: str, state: str) -> Lis
     url      = "https://api.connected2fiber.com/v2/tenants/"
     params   = {"companyId": company_id, "streetName": address, "city": city, "state": state}
     headers  = {"Cache-Control": "no-cache", "Ocp-Apim-Subscription-Key": CONNECTBASE_TENANT_API_KEY}
+    _connectbase_limiter.acquire()
     response = _get_with_retry(url, params, headers, label=f"Tenant [{address}]")
     if response is None or response.status_code != 200:
         return []
@@ -148,7 +156,7 @@ def call_tenant_api(company_id: str, address: str, city: str, state: str) -> Lis
 # ── Row merge ─────────────────────────────────────────────────────────────────
 
 def merge_data(ey_row: Dict, api_tenant: Dict, other_tenants: List[Dict],
-               dqe_data: Dict, site_providers: str) -> Dict:
+               site_providers: str) -> Dict:
     merged = ey_row.copy()
 
     # Merge tenant fields using centralized mapping
@@ -158,17 +166,6 @@ def merge_data(ey_row: Dict, api_tenant: Dict, other_tenants: List[Dict],
             merged[internal_key] = val if val is not None else None
         else:
             merged[internal_key] = None
-
-    # Merge DQE network fields
-    if dqe_data.get("provider"):
-        for internal_key, api_key in CB_NETWORK_FIELD_MAP.items():
-            val = dqe_data.get(api_key)
-            merged[internal_key] = val if val is not None else None
-    else:
-        merged["DQE_Site_Distance"] = "NOT_FOUND"
-        for internal_key in list(CB_NETWORK_FIELD_MAP.keys()):
-            if internal_key != "DQE_Site_Distance":
-                merged[internal_key] = None
 
     merged["SITE_All_Competitors"] = site_providers if site_providers else None
 
@@ -187,13 +184,11 @@ def process_single_row(row_data: Tuple[int, int, Dict]) -> Tuple[int, Dict]:
     )
     logger.info(f"[{idx}/{total}] Starting: {name} at {address}")
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as inner:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as inner:
         tenant_future  = inner.submit(call_tenant_api, CONNECTBASE_COMPANY_ID, address, city, state)
-        network_future = inner.submit(call_network_intelligence_api, address, city, state)
         onnet_future   = inner.submit(call_onnet_providers_api, address, city, state)
-        api_tenants      = tenant_future.result()
-        dqe_network_info = network_future.result()
-        site_providers   = onnet_future.result()
+        api_tenants    = tenant_future.result()
+        site_providers = onnet_future.result()
 
     ey_norm        = normalize_name(name)
     matched_tenant = next(
@@ -202,8 +197,8 @@ def process_single_row(row_data: Tuple[int, int, Dict]) -> Tuple[int, Dict]:
         None
     )
     other_tenants = [t for t in api_tenants if t != matched_tenant]
-    merged        = merge_data(row, matched_tenant, other_tenants, dqe_network_info, site_providers)
-    logger.info(f"[{idx}/{total}] Done: {name} - DQE: {merged.get('DQE_Connection_Status', 'N/A')}")
+    merged        = merge_data(row, matched_tenant, other_tenants, site_providers)
+    logger.info(f"[{idx}/{total}] Done: {name}")
     return (idx, merged)
 
 # ── Main entry point ──────────────────────────────────────────────────────────

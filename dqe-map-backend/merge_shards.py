@@ -62,26 +62,18 @@ def merge_all_shards(gcs_bucket: str = GCS_BUCKET,
         logger.warning(f"No shards found with prefix: {prefix}")
         return False
 
-    # Verify completeness
+    # Verify completeness — require every expected shard before merging and deleting.
     expected_count = CLOUD_RUN_TASK_COUNT
     missing = _verify_shard_completeness(shards, expected_count)
-
-    # Require at least 75% of shards to proceed — abort otherwise
-    MIN_SHARD_RATIO = 0.75
     available_ratio = (expected_count - len(missing)) / expected_count if expected_count > 0 else 0
 
     if missing:
-        if available_ratio < MIN_SHARD_RATIO:
-            logger.error(
-                f"Only {expected_count - len(missing)}/{expected_count} shards available "
-                f"({available_ratio:.0%}). Minimum is {MIN_SHARD_RATIO:.0%}. "
-                f"Missing indices: {missing}. ABORTING merge."
-            )
-            return False
-        logger.warning(
-            f"Missing {len(missing)} of {expected_count} expected shards: "
-            f"indices {missing}. Proceeding with {available_ratio:.0%} completeness."
+        logger.error(
+            f"Only {expected_count - len(missing)}/{expected_count} shards available "
+            f"({available_ratio:.0%}). Missing indices: {missing}. "
+            f"Aborting merge so partial shards remain available for re-run."
         )
+        return False
 
     all_cards = []
     shard_summaries = []

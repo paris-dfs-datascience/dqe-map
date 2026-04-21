@@ -38,9 +38,9 @@ steps:
           --memory=8Gi \
           --cpu=4 \
           --task-timeout=86400s \
-          --tasks=4 \
-          --parallelism=4 \
-          --max-retries=0 \
+          --tasks=8 \
+          --parallelism=8 \
+          --max-retries=1 \
           --set-env-vars=GCS_BUCKET=csv-battle-cards-dqe,PROJECT_ID=manifest-altar-490719-j7,MAX_WORKERS=3,MAX_ROWS=0 \
           --set-secrets=GOOGLE_MAPS_API_KEY=google-maps-api-key:latest,CONNECTBASE_TENANT_API_KEY=connectbase-tenant-api-key:latest,CONNECTBASE_NETWORK_API_KEY=connectbase-network-api-key:latest,HUBSPOT_ACCESS_TOKEN=hubspot-access-token:latest
 

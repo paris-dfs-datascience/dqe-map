@@ -45,12 +45,10 @@ def get_analysis_prompt(research_text: str, business_name: str, address: str, ci
     """Generate the analysis and scoring prompt."""
     
     ey_employees = ey_data.get('No Of Employees') or 'Unknown'
-    dqe_connection = connectbase_data.get('DQE_Connection_Status') or 'Unknown'
-    dqe_network_status = connectbase_data.get('DQE_Network_Status') or 'Unknown'
 
     # Check if we have ConnectBase data
     has_connectbase = bool(connectbase_data.get('API_EntityName'))
-    
+
     connectbase_section = ""
     if has_connectbase:
         connectbase_section = f"""
@@ -62,19 +60,12 @@ CONNECTBASE DATA:
 - CB LinkedIn: {connectbase_data.get('API_LinkedIn') or 'Unknown'}
 - CB Revenue: {connectbase_data.get('API_Revenue') or 'Unknown'}
 - CB Monthly Network Spend: {connectbase_data.get('API_MonthlyNetworkSpend') or 'Unknown'}
-
-DQE NETWORK INTELLIGENCE:
-- DQE Connection Status: {dqe_connection}
-- DQE Network Status: {dqe_network_status}
 - Competitors at Site: {connectbase_data.get('SITE_All_Competitors') or 'Unknown'}
 """
     else:
         connectbase_section = """
 CONNECTBASE DATA:
 ⚠️  No ConnectBase data available for this location.
-
-DQE NETWORK INTELLIGENCE:
-- Not available without ConnectBase data
 
 NOTE: You must rely entirely on EY data and your web research for this analysis.
 Focus extra effort on validating the business and finding employee count data.

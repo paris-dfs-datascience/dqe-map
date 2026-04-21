@@ -14,7 +14,7 @@ logger = logging.getLogger("battlecard-processor")
 
 from pipeline_config import (
     PROJECT_ID, GCS_BUCKET, GOOGLE_MAPS_API_KEY,
-    CB_TENANT_FIELD_MAP, CB_NETWORK_FIELD_MAP,
+    CB_TENANT_FIELD_MAP,
 )
 from battlecard_llm import BattleCardLLM
 from hubspot_matcher import HubSpotMatcher
@@ -30,7 +30,7 @@ class BattleCardProcessor:
 
         self.maps_api_key = GOOGLE_MAPS_API_KEY
         if not self.maps_api_key:
-            print("WARNING: GOOGLE_MAPS_API_KEY not set in environment")
+            raise RuntimeError("GOOGLE_MAPS_API_KEY env var is required")
 
         gcs_bucket    = GCS_BUCKET
         self.hubspot  = HubSpotMatcher(gcs_bucket=gcs_bucket, project_id=project_id)
@@ -104,9 +104,6 @@ class BattleCardProcessor:
         """Extract ConnectBase fields using the centralized field mapping."""
         data = {}
         for internal_key in CB_TENANT_FIELD_MAP:
-            val = row.get(internal_key)
-            data[internal_key] = val if val else None
-        for internal_key in CB_NETWORK_FIELD_MAP:
             val = row.get(internal_key)
             data[internal_key] = val if val else None
         val = row.get("SITE_All_Competitors")

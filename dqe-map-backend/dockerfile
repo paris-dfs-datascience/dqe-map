@@ -22,7 +22,5 @@ COPY hubspot_update.py .
 COPY tenant_enrichment.py .
 
 ENV PYTHONUNBUFFERED=1
-ENV GCS_BUCKET=csv-battle-cards-dqe
-ENV PROJECT_ID=manifest-altar-490719-j7
 
 CMD ["python", "battlecard_generator.py"]

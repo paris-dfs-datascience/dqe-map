@@ -7,9 +7,14 @@ GCS paths, column mappings, and tuning constants.
 import os
 
 # ── Google Cloud ─────────────────────────────────────────────────────────────
-PROJECT_ID = os.environ.get("PROJECT_ID", "manifest-altar-490719-j7")
-GCS_BUCKET = os.environ.get("GCS_BUCKET", "csv-battle-cards-dqe")
+PROJECT_ID = os.environ.get("PROJECT_ID")
+GCS_BUCKET = os.environ.get("GCS_BUCKET")
 GCP_LOCATION = "us-central1"
+
+if not PROJECT_ID:
+    raise RuntimeError("PROJECT_ID env var is required")
+if not GCS_BUCKET:
+    raise RuntimeError("GCS_BUCKET env var is required")
 
 # ── GCS paths ────────────────────────────────────────────────────────────────
 EY_INPUT_FOLDER = "EY-file"
@@ -34,6 +39,9 @@ API_TIMEOUT = 20
 RETRY_ATTEMPTS = 3
 RATE_LIMIT_RETRIES = 8
 RATE_LIMIT_BACKOFF = 5
+# ConnectBase per-endpoint budget is 180/min. Using 170 leaves headroom for
+# clock drift and the occasional retry burst.
+CONNECTBASE_CALLS_PER_MINUTE = int(os.environ.get("CONNECTBASE_CALLS_PER_MINUTE", "170"))
 
 # ── LLM tuning ───────────────────────────────────────────────────────────────
 LLM_MAX_RETRIES = 5
@@ -70,16 +78,8 @@ CB_TENANT_FIELD_MAP = {
     "API_LocationCount": "locationCount",
 }
 
-# DQE network intelligence fields from the network API response
-CB_NETWORK_FIELD_MAP = {
-    "DQE_Site_Distance": "siteDistance",
-    "DQE_Connection_Status": "connectionStatus",
-    "DQE_Access_Medium": "accessMedium",
-    "DQE_Network_Status": "networkConnectionStatus",
-}
-
-# All ConnectBase/DQE fields extracted per row (used by processor + enrichment)
-CONNECTBASE_FIELDS = list(CB_TENANT_FIELD_MAP.keys()) + list(CB_NETWORK_FIELD_MAP.keys()) + [
+# All ConnectBase fields extracted per row (used by processor + enrichment)
+CONNECTBASE_FIELDS = list(CB_TENANT_FIELD_MAP.keys()) + [
     "SITE_All_Competitors",
 ]
 

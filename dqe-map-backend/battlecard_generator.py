@@ -45,34 +45,27 @@ def _read_checkpoint(gcs_client: storage.Client, gcs_bucket: str) -> dict:
 
 
 def _write_checkpoint(gcs_client: storage.Client, gcs_bucket: str, checkpoint: dict):
-    """Write pipeline checkpoint to GCS with generation-based conditional write to prevent races."""
-    try:
-        bucket = gcs_client.bucket(gcs_bucket)
-        blob = bucket.blob(CHECKPOINT_BLOB)
+    """Write pipeline checkpoint to GCS with a generation precondition to prevent races."""
+    bucket = gcs_client.bucket(gcs_bucket)
+    blob = bucket.blob(CHECKPOINT_BLOB)
+    payload = json.dumps(checkpoint, indent=2)
 
-        # Use if_generation_match to prevent concurrent overwrites.
-        # First read current generation; 0 means "only if blob doesn't exist".
+    if blob.exists():
         blob.reload()
         generation = blob.generation
+    else:
+        # if_generation_match=0 means "only succeed if the object does not yet exist"
+        generation = 0
+
+    try:
         blob.upload_from_string(
-            json.dumps(checkpoint, indent=2),
+            payload,
             content_type="application/json",
-            if_generation_match=generation
+            if_generation_match=generation,
+            timeout=120,
         )
     except Exception as e:
-        # If blob doesn't exist yet, write unconditionally
-        if "404" in str(e) or "Not Found" in str(e) or "generation" in str(e).lower():
-            try:
-                bucket = gcs_client.bucket(gcs_bucket)
-                blob = bucket.blob(CHECKPOINT_BLOB)
-                blob.upload_from_string(
-                    json.dumps(checkpoint, indent=2),
-                    content_type="application/json"
-                )
-            except Exception as inner_e:
-                logger.error(f"Failed to write checkpoint: {inner_e}")
-        else:
-            logger.error(f"Checkpoint write conflict or error: {e}")
+        logger.error(f"Checkpoint write failed (generation={generation}): {e}")
 
 
 class CSVBattleCardGenerator:
@@ -379,6 +372,31 @@ def main():
                     raise RuntimeError(f"HubSpot refresh failed and no prior data exists: {e}")
                 logger.warning("Using existing HubSpot data from a prior run")
 
+    # ── Wait gate: tasks 1..N-1 block until task 0 finishes steps 1+2 ────────
+    # Prevents tasks 1..N-1 from racing ahead and reading a stale ENRICHED_CSV
+    # from a prior run. 6h timeout covers step 1 for 13k+ rows with ConnectBase
+    # 429 backoffs.
+    if task_index != 0:
+        logger.info(f"Task {task_index + 1}/{task_count}: waiting for task 0 to finish enrichment + hubspot...")
+        step12_max_wait = 36000  # 10h — headroom for ConnectBase throttle variance at 13k+ rows
+        step12_poll_interval = 120
+        step12_waited = 0
+        enriched_blob = gcs_client.bucket(GCS_BUCKET).blob(ENRICHED_CSV_BLOB)
+        while step12_waited < step12_max_wait:
+            cp = _read_checkpoint(gcs_client, GCS_BUCKET)
+            if enriched_blob.exists() and cp.get("hubspot_complete"):
+                logger.info(f"Task {task_index + 1}/{task_count}: steps 1+2 complete. Proceeding to step 3.")
+                checkpoint = cp
+                break
+            logger.info(f"Waiting for enriched CSV (task 0 output) at gs://{GCS_BUCKET}/{ENRICHED_CSV_BLOB} ... ({step12_waited}s/{step12_max_wait}s)")
+            time.sleep(step12_poll_interval)
+            step12_waited += step12_poll_interval
+        else:
+            raise RuntimeError(
+                f"Task {task_index + 1}/{task_count}: timed out after {step12_max_wait}s "
+                f"waiting for task 0 to finish steps 1+2"
+            )
+
     # ── Step 3: Battle card generation (all tasks) ────────────────────────────
     logger.info(f"\n=== Step 3: Battle Card Generation (task {task_index + 1}/{task_count}) ===")
     generator    = CSVBattleCardGenerator(gcs_bucket=GCS_BUCKET, project_id=PROJECT_ID)
@@ -392,7 +410,7 @@ def main():
         # Poll GCS until all shards are present or we time out
         from pipeline_config import BATTLECARD_OUTPUT_PREFIX
         shard_prefix = f"{BATTLECARD_OUTPUT_PREFIX}/{DEFAULT_OUTPUT_NAME}_shard_"
-        max_wait = 3600  # 60 minutes max
+        max_wait = 7200  # 2 hours max — accommodates shard completion skew at 13k+ rows
         poll_interval = 30  # check every 30 seconds
         waited = 0
 
